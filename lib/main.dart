@@ -20,6 +20,7 @@ const networkServer = "";
 final _connectivityInstance = Connectivity();
 
 class MQTTClientConnector {
+  bool isInitialized = false;
   final MqttServerClient _client = MqttServerClient.withPort(
     server,
     clientIdentifier,
@@ -50,6 +51,7 @@ class MQTTClientConnector {
 
     try {
       await _client.connect();
+      isInitialized = true;
       debugPrint(
         'Connecting with Client_id :: ${_client.clientIdentifier} to Server :: ${server}  Mqtt Client',
       );
@@ -60,6 +62,14 @@ class MQTTClientConnector {
     } catch (e) {
       debugPrint('MQTT Server::exception - $e');
       _client.disconnect();
+    }
+  }
+
+  Future<void> reconnect() async {
+    if (!isInitialized) {
+      await connect(clientId: clientIdentifier);
+    } else {
+      _client.doAutoReconnect(force: true);
     }
   }
 
@@ -121,11 +131,18 @@ class _MyHomePageState extends State<MyHomePage> {
       await connector.connect(clientId: clientIdentifier);
       Timer.periodic(const Duration(seconds: 2), (timer) async {
         mqttConnectionStatus.value = connector.state;
+        if (mqttConnectionStatus.value == MqttConnectionState.faulted) {
+          if (mqttConnectionStatus.value != MqttConnectionState.connecting) {
+            await connector.reconnect();
+          }
+        }
       });
     });
+
     _connectivityInstance.onConnectivityChanged.listen((event) {
       connectionResult.value = event;
     });
+
     Timer.periodic(kLookupInterval, (timer) async {
       Socket? sock;
       try {
@@ -171,7 +188,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 ValueListenableBuilder(
                   valueListenable: connectionResult,
                   builder: (_, result, __) {
-                    return Text(result.name);
+                    return Text(
+                      result.name,
+                      style: TextStyle(
+                        color: result != ConnectivityResult.none
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    );
                   },
                 ),
               ],
@@ -183,7 +207,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 ValueListenableBuilder(
                   valueListenable: mqttConnectionStatus,
                   builder: (_, result, __) {
-                    return Text(result.name);
+                    return Text(
+                      result.name,
+                      style: TextStyle(
+                        color: result == MqttConnectionState.connected
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    );
                   },
                 ),
               ],
@@ -195,7 +226,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 ValueListenableBuilder(
                   valueListenable: internetConnection,
                   builder: (_, result, __) {
-                    return Text(result.toString());
+                    return Text(
+                      result.toString(),
+                      style: TextStyle(
+                        color: result ? Colors.green : Colors.red,
+                      ),
+                    );
                   },
                 ),
               ],
@@ -219,7 +255,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 ValueListenableBuilder(
                   valueListenable: lastPubStatusSuccess,
                   builder: (_, result, __) {
-                    return Text(result.toString());
+                    return Text(
+                      result.toString(),
+                      style: TextStyle(
+                        color: result ? Colors.green : Colors.red,
+                      ),
+                    );
                   },
                 ),
               ],
